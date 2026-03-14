@@ -5,7 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using TextCopy;
 
-namespace AuthCodeListener;
+namespace Mqtt.Clipboard;
 
 public class MqttListenerService : BackgroundService
 {
@@ -14,7 +14,7 @@ public class MqttListenerService : BackgroundService
     private readonly MqttConfig _mqttConfig;
     private readonly JsonSerializerOptions _jsonOptions;
 
-    private const string NotificationTitle = "Verification Code Listener";
+    private const string NotificationTitle = "📋 Clipboard Set";
 
     public MqttListenerService(IOptions<MqttConfig> mqttConfig)
     {
@@ -28,17 +28,19 @@ public class MqttListenerService : BackgroundService
             .WithTcpServer(_mqttConfig.Endpoint, _mqttConfig.Port)
             .WithCredentials(_mqttConfig.Username, _mqttConfig.Password)
             .WithCleanSession()
+            .WithClientId(Environment.MachineName)
             .Build();
 
         _jsonOptions = new JsonSerializerOptions
         {
-            PropertyNameCaseInsensitive = true
+            PropertyNameCaseInsensitive = true,
+            WriteIndented = true
         };
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        Console.WriteLine("Starting verification code listener service...");
+        Console.WriteLine("Starting shared clipboard service...");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -71,7 +73,7 @@ public class MqttListenerService : BackgroundService
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        Console.WriteLine("Stopping verification code listener service...");
+        Console.WriteLine("Stopping shared clipboard service...");
         if (_client.IsConnected)
         {
             await _client.DisconnectAsync();
@@ -84,17 +86,17 @@ public class MqttListenerService : BackgroundService
         try
         {
             string payloadAsString = args.ApplicationMessage.ConvertPayloadToString();
-            var payload = JsonSerializer.Deserialize<AuthCodePayload>(payloadAsString, _jsonOptions);
+            var payload = JsonSerializer.Deserialize<MqttClipboardPayload>(payloadAsString, _jsonOptions);
             if (payload == null)
             {
-                Console.WriteLine("Invalid message payload.");
+                Console.WriteLine($"Invalid message payload: {payloadAsString}");
                 return;
             }
 
-            Console.WriteLine($"[{_mqttConfig.Topic}] Received code {payload.Code} from {payload.Source}");
-            await ClipboardService.SetTextAsync(payload.Code);
+            Console.WriteLine($"[topic:{_mqttConfig.Topic}] Copying {payload.Text} to clipboard");
+            await ClipboardService.SetTextAsync(payload.Text);
 
-            SendNotification($"Copied code {payload.Code} from {payload.Source}");
+            SendNotification(payload.Text);
         }
         catch (Exception ex)
         {
@@ -119,4 +121,3 @@ public class MqttListenerService : BackgroundService
         }
     }
 }
-
