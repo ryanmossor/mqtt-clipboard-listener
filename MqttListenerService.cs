@@ -93,9 +93,14 @@ public class MqttListenerService : BackgroundService
                 return;
             }
 
-            Console.WriteLine($"[topic:{_mqttConfig.Topic}] Copying {payload.Text} to clipboard");
-            await ClipboardService.SetTextAsync(payload.Text);
+            if (string.IsNullOrWhiteSpace(payload.Text)) {
+                Console.WriteLine("[WARN] Skipping empty message payload");
+                return;
+            }
 
+            Console.WriteLine($"[topic:{_mqttConfig.Topic}] Copying {payload.Text} to clipboard");
+
+            await ClipboardService.SetTextAsync(payload.Text);
             SendNotification(payload.Text);
         }
         catch (Exception ex)
@@ -104,7 +109,7 @@ public class MqttListenerService : BackgroundService
         }
     }
 
-    private void SendNotification(string body)
+    private static void SendNotification(string body)
     {
         if (OperatingSystem.IsLinux())
         {
