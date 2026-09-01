@@ -76,7 +76,7 @@ public class MqttListenerService : BackgroundService
         Console.WriteLine("Stopping shared clipboard service...");
         if (_client.IsConnected)
         {
-            await _client.DisconnectAsync();
+            await _client.DisconnectAsync(cancellationToken: cancellationToken);
         }
         await base.StopAsync(cancellationToken);
     }
