@@ -100,13 +100,40 @@ public class MqttListenerService : BackgroundService
 
             Console.WriteLine($"[topic:{_mqttConfig.Topic}] Copying {payload.Text} to clipboard");
 
-            await ClipboardService.SetTextAsync(payload.Text);
+            await SetClipboardAsync(payload.Text);
             SendNotification(payload.Text);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error handling message: {ex}");
         }
+    }
+
+    private static async Task SetClipboardAsync(string text)
+    {
+        if (Environment.GetEnvironmentVariable("XDG_SESSION_TYPE") == "wayland")
+        {
+            await ExecClipboardCopyAsync("wl-copy", text);
+        }
+        else
+        {
+            await ClipboardService.SetTextAsync(text);
+        }
+    }
+
+    private static async Task ExecClipboardCopyAsync(string fileName, string text)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            RedirectStandardInput = true,
+            UseShellExecute = false
+        };
+
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"Failed to start {fileName} process");
+        await process.StandardInput.WriteAsync(text);
+        process.StandardInput.Close();
+        await process.WaitForExitAsync();
     }
 
     private static void SendNotification(string body)
