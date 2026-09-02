@@ -14,7 +14,7 @@ public class MqttListenerService : BackgroundService
     private readonly MqttConfig _mqttConfig;
     private readonly JsonSerializerOptions _jsonOptions;
 
-    private const string NotificationTitle = "📋 Clipboard Set";
+    private static readonly Lazy<bool> HasWlCopy = new(() => IsCommandAvailable("wl-copy"));
 
     public MqttListenerService(IOptions<MqttConfig> mqttConfig)
     {
@@ -100,8 +100,18 @@ public class MqttListenerService : BackgroundService
 
             Console.WriteLine($"[topic:{_mqttConfig.Topic}] Copying {payload.Text} to clipboard");
 
-            await SetClipboardAsync(payload.Text);
-            SendNotification(payload.Text);
+            try
+            {
+                await SetClipboardAsync(payload.Text);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to set clipboard: {ex}");
+                SendNotification("⚠️ Clipboard Set Failed", ex.Message, "critical");
+                return;
+            }
+
+            SendNotification("📋 Clipboard Set", payload.Text);
         }
         catch (Exception ex)
         {
@@ -111,7 +121,7 @@ public class MqttListenerService : BackgroundService
 
     private static async Task SetClipboardAsync(string text)
     {
-        if (Environment.GetEnvironmentVariable("XDG_SESSION_TYPE") == "wayland")
+        if (HasWlCopy.Value)
         {
             await ExecClipboardCopyAsync("wl-copy", text);
         }
@@ -119,6 +129,14 @@ public class MqttListenerService : BackgroundService
         {
             await ClipboardService.SetTextAsync(text);
         }
+    }
+
+    private static bool IsCommandAvailable(string command)
+    {
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+        return pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Select(dir => Path.Combine(dir, command))
+            .Any(File.Exists);
     }
 
     private static async Task ExecClipboardCopyAsync(string fileName, string text)
@@ -136,20 +154,20 @@ public class MqttListenerService : BackgroundService
         await process.WaitForExitAsync();
     }
 
-    private static void SendNotification(string body)
+    private static void SendNotification(string title, string body, string urgency = "normal")
     {
         if (OperatingSystem.IsLinux())
         {
             Process.Start("notify-send", [
-                "--urgency", "normal",
+                "--urgency", urgency,
                 "--expire-time", "5000",
-                NotificationTitle,
+                title,
                 body
             ]);
         }
         else if (OperatingSystem.IsMacOS())
         {
-            Process.Start("osascript", ["-e", $"display notification \"{body}\" with title \"{NotificationTitle}\""]);
+            Process.Start("osascript", ["-e", $"display notification \"{body}\" with title \"{title}\""]);
         }
     }
 }
